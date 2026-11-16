@@ -1,5 +1,5 @@
 ## Interface: 16001
 ## Title: TargetMacro
 ## Version: 1.2
-## Notes: Right-click target/focus or /tmacro <name> to make a macro that targets and skull-marks that unit.
+## Notes: Right-click your target or focus frame, or type /tmacro, to make a macro that targets and skull-marks that unit.
 TargetMacro.lua
