@@ -4,13 +4,26 @@ local MAX_NAME = 16 -- WoW macro name limit
 
 local function Msg(t) print("|cff33ff99TargetMacro|r: " .. t) end
 
-local function MakeMacro(unit)
-  unit = unit or "target"
-  if InCombatLockdown() then Msg("can't create macros in combat."); return end
-  if not UnitExists(unit) then Msg("no " .. unit .. "."); return end
+-- Macro: target the unit by exact name, then put a skull on it only if
+-- the target really is that unit (so a failed /targetexact marks nothing).
+-- Skips marking if it already has a skull, since setting it again removes it.
+local function BuildBody(name)
+  local safe = name:gsub('"', ''):lower()
+  -- case-insensitive, and matches with or without "-Realm"
+  return "/targetexact " .. name .. "\n" ..
+    '/run local t,n="target","' .. safe .. '" if UnitExists(t) and (GetUnitName(t,true):lower()==n' ..
+    ' or UnitName(t):lower()==n) and GetRaidTargetIndex(t)~=8 then SetRaidTarget(t,8) end'
+end
 
-  local name = GetUnitName(unit, true) -- includes realm for other-realm players
-  local body = "/targetexact " .. name
+local function MakeMacro(unit, name)
+  if InCombatLockdown() then Msg("can't create macros in combat."); return end
+  if not name then
+    unit = unit or "target"
+    if not UnitExists(unit) then Msg("no " .. unit .. "."); return end
+    name = GetUnitName(unit, true) -- includes realm for other-realm players
+  end
+  local body = BuildBody(name)
+  if #body > 255 then Msg("name too long for a macro."); return end
   local macroName = name:sub(1, MAX_NAME)
 
   local index = GetMacroIndexByName(macroName)
@@ -51,8 +64,14 @@ if Menu and Menu.ModifyMenu then
   end
 end
 
--- Backup: /tmacro [focus]
+-- /tmacro            -> current target
+-- /tmacro focus      -> current focus
+-- /tmacro <name>     -> macro for that name (doesn't need to be targeted)
 SLASH_TARGETMACRO1 = "/tmacro"
 SlashCmdList.TARGETMACRO = function(msg)
-  MakeMacro((msg or ""):lower():match("focus") and "focus" or "target")
+  msg = strtrim(msg or "")
+  local lower = msg:lower()
+  if lower == "" or lower == "target" then MakeMacro("target")
+  elseif lower == "focus" then MakeMacro("focus")
+  else MakeMacro(nil, msg) end
 end

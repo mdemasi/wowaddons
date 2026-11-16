@@ -5,4 +5,4 @@ Addons for WoW Forever (interface 16001). Copy a folder into `Interface/AddOns/`
 - **PersistentNotepad**: notepad saved between sessions, with a minimap button. `/np`
 - **HawkTracker**: countdown bars and an expiry sound for Summon Hawk. `/hawks`
 - **BreathFrame**: screen border while your breath runs out underwater. `/breathframe test`
-- **TargetMacro**: right-click the target or focus frame and pick *Create Target Macro* to get a `/targetexact` macro on your cursor. Also `/tmacro [focus]`.
+- **TargetMacro**: right-click the target or focus frame and pick *Create Target Macro*, or use `/tmacro [focus|<name>]`, to get a macro on your cursor that targets that unit and puts a skull on it.
