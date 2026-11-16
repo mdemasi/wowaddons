@@ -4,15 +4,11 @@ local MAX_NAME = 16 -- WoW macro name limit
 
 local function Msg(t) print("|cff33ff99TargetMacro|r: " .. t) end
 
--- Macro: target the unit by exact name, then put a skull on it only if
--- the target really is that unit (so a failed /targetexact marks nothing).
--- Skips marking if it already has a skull, since setting it again removes it.
+-- Macro uses only built-in slash commands (no /run Lua, which WoW Forever
+-- blocks). Clearing first means a failed /targetexact leaves no target,
+-- so the skull never lands on the wrong unit.
 local function BuildBody(name)
-  local safe = name:gsub('"', ''):lower()
-  -- case-insensitive, and matches with or without "-Realm"
-  return "/targetexact " .. name .. "\n" ..
-    '/run local t,n="target","' .. safe .. '" if UnitExists(t) and (GetUnitName(t,true):lower()==n' ..
-    ' or UnitName(t):lower()==n) and GetRaidTargetIndex(t)~=8 then SetRaidTarget(t,8) end'
+  return "/cleartarget\n/targetexact " .. name .. "\n/tm [exists] 8"
 end
 
 local function MakeMacro(unit, name)
