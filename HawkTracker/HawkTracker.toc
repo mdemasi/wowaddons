@@ -1,0 +1,6 @@
+## Interface: 16001
+## Title: HawkTracker
+## Version: 2.2
+## Notes: Shows how many Summon Hawk hawks you have and when they expire.
+## SavedVariables: HawkTrackerDB
+HawkTracker.lua

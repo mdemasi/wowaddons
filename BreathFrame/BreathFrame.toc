@@ -1,0 +1,6 @@
+## Interface: 16001
+## Title: BreathFrame
+## Notes: Translucent blue screen border while holding your breath; flashes faster as breath runs out.
+## Version: 1.0.0
+
+BreathFrame.lua

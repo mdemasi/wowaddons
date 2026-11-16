@@ -1,0 +1,5 @@
+## Interface: 16001
+## Title: Persistent Notepad
+## Notes: A simple notepad that saves between sessions. /notepad
+## SavedVariables: PersistentNotepadDB
+PersistentNotepad.lua
