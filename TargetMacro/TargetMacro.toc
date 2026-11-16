@@ -1,0 +1,5 @@
+## Interface: 16001
+## Title: TargetMacro
+## Version: 1.0
+## Notes: Right-click the target or focus frame to make a /targetexact macro and put it on your cursor.
+TargetMacro.lua
