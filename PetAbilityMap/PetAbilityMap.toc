@@ -1,8 +1,10 @@
 ## Interface: 16001
 ## Title: PetAbilityMap
-## Version: 1.2
+## Version: 1.3
 ## Notes: Pet abilities you can learn by taming: world map icon per zone, plus a minimap button opening a full list with learned ranks.
 ## SavedVariablesPerCharacter: PetAbilityMapCharDB
 Data.lua
+Locations.lua
 PetAbilityMap.lua
 UI.lua
+Pins.lua

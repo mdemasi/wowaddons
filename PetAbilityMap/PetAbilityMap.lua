@@ -74,7 +74,14 @@ local function CountUnknown(entries)
 end
 
 -- Tooltip ----------------------------------------------------------------
-local function FillTooltip(tt, zone)
+local FillTooltip
+local function ShowTip(tt, zone)
+  FillTooltip(tt, zone)
+  tt:AddLine(" ")
+  tt:AddLine("Click to " .. (PetAbilityMapCharDB.showPins and "hide" or "show") .. " creature locations on the map.", 0.6, 0.75, 1)
+end
+
+FillTooltip = function(tt, zone)
   local entries = ZoneEntries(zone)
   tt:AddLine("Pet abilities: " .. (zone or "?"))
   if not entries then
@@ -128,21 +135,24 @@ local function CreateButton()
     self.icon:SetDesaturated(not entries or n == 0)
     self.count:SetText(n > 0 and n or "")
     if GameTooltip:IsOwned(self) then
-      GameTooltip:ClearLines(); FillTooltip(GameTooltip, zone); GameTooltip:Show()
+      GameTooltip:ClearLines(); ShowTip(GameTooltip, zone); GameTooltip:Show()
     end
   end
 
-  local acc = 0
+  local acc, lastMap = 0, nil
   btn:SetScript("OnUpdate", function(self, el)
     acc = acc + el
     if acc < 0.25 then return end
     acc = 0
-    if MapZoneName() ~= lastZone then Refresh(self) end
+    local mapID = WorldMapFrame:GetMapID()
+    if mapID ~= lastMap then lastMap = mapID; Refresh(self); ns.RefreshPins() else ns.CheckPinScale() end
   end)
-  btn:SetScript("OnShow", Refresh)
+  btn:SetScript("OnShow", function(self) Refresh(self); ns.RefreshPins() end)
+  btn:RegisterForClicks("LeftButtonUp")
+  btn:SetScript("OnClick", function(self) ns.TogglePins(); Refresh(self) end)
   btn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    FillTooltip(GameTooltip, MapZoneName())
+    ShowTip(GameTooltip, MapZoneName())
     GameTooltip:Show()
   end)
   btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
