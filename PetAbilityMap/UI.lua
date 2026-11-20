@@ -18,7 +18,8 @@ win:SetBackdrop({
   tile = true, tileSize = 32, edgeSize = 24,
   insets = { left = 6, right = 6, top = 6, bottom = 6 },
 })
-win:SetMovable(true); win:EnableMouse(true); win:SetClampedToScreen(true)
+win:SetMovable(true); win:SetResizable(true); win:EnableMouse(true); win:SetClampedToScreen(true)
+if win.SetResizeBounds then win:SetResizeBounds(320, 220) elseif win.SetMinResize then win:SetMinResize(320, 220) end
 win:SetFrameStrata("DIALOG")
 win:RegisterForDrag("LeftButton")
 win:SetScript("OnDragStart", win.StartMoving)
@@ -43,6 +44,21 @@ scroll:SetPoint("BOTTOMRIGHT", -32, 14)
 local content = CreateFrame("Frame", nil, scroll)
 content:SetSize(WIDTH, 1)
 scroll:SetScrollChild(content)
+scroll:SetScript("OnSizeChanged", function(_, w) content:SetWidth(w) end)
+
+-- Resize grip (bottom-right); size is remembered per character
+local grip = CreateFrame("Button", nil, win)
+grip:SetSize(16, 16)
+grip:SetPoint("BOTTOMRIGHT", -6, 6)
+grip:SetFrameLevel(scroll:GetFrameLevel() + 5)
+grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+grip:SetScript("OnMouseDown", function() win:StartSizing("BOTTOMRIGHT") end)
+grip:SetScript("OnMouseUp", function()
+  win:StopMovingOrSizing()
+  PetAbilityMapCharDB.windowSize = { win:GetWidth(), win:GetHeight() }
+end)
 
 -- Rows ---------------------------------------------------------------------
 local heads, rankRows = {}, {}
@@ -59,7 +75,14 @@ end
 local function RankTooltip(self)
   local ability, rank = self.ability, self.rank
   GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-  GameTooltip:AddLine(ability .. " " .. rank[1] .. "  (pet level " .. rank[2] .. ")")
+  local icon = DATA.icons[ability]
+  GameTooltip:AddLine((icon and ("|T" .. ICON_PATH .. icon .. ":16|t ") or "") .. ability .. " " .. rank[1])
+  if ns.IsKnown(ability, rank[1]) then GameTooltip:AddLine("Learned", 0.25, 1, 0.25) end
+  if rank[5] and rank[5] ~= "" then GameTooltip:AddLine(rank[5], 1, 1, 1, true) end
+  GameTooltip:AddLine(("Pet level %d  -  %d training points"):format(rank[2], rank[6] or 0), 1, 0.82, 0)
+  local fam = DATA.abilities[ability].families
+  if fam and fam ~= "" then GameTooltip:AddLine("Learned by: " .. fam, 0.8, 0.8, 0.8, true) end
+  GameTooltip:AddLine(" ")
   if rank[3] == "trainer" then
     GameTooltip:AddLine("Learned from a pet trainer.", 1, 1, 1)
   elseif #rank[4] == 0 then
@@ -82,8 +105,9 @@ local function Build()
   for _, name in ipairs(names) do
     local info = DATA.abilities[name]
     local h = CreateFrame("Frame", nil, content)
-    h:SetSize(WIDTH, HEAD_H)
+    h:SetHeight(HEAD_H)
     h:SetPoint("TOPLEFT", 0, -y)
+    h:SetPoint("TOPRIGHT", 0, -y)
     h.icon = h:CreateTexture(nil, "ARTWORK")
     h.icon:SetSize(20, 20)
     h.icon:SetPoint("LEFT", 2, 0)
@@ -102,8 +126,9 @@ local function Build()
 
     for _, rank in ipairs(info.ranks) do
       local r = CreateFrame("Button", nil, content)
-      r:SetSize(WIDTH - 28, ROW_H)
+      r:SetHeight(ROW_H)
       r:SetPoint("TOPLEFT", 28, -y)
+      r:SetPoint("TOPRIGHT", 0, -y)
       r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
       r.check = r:CreateTexture(nil, "ARTWORK")
       r.check:SetSize(12, 12)
@@ -152,7 +177,11 @@ local function Refresh()
   summary:SetText(learnedAbilities .. " of " .. #heads .. " abilities learned  -  hover a rank for teachers")
 end
 
-win:SetScript("OnShow", Refresh)
+win:SetScript("OnShow", function()
+  local sz = PetAbilityMapCharDB.windowSize
+  if sz then win:SetSize(sz[1], sz[2]) end
+  Refresh()
+end)
 
 function ns.ToggleUI() setShown(win, not win:IsShown()) end
 

@@ -8,21 +8,55 @@ local GREY = { 0.5, 0.5, 0.5 }
 local function Msg(t) print("|cff33ff99PetAbilityMap|r: " .. t) end
 
 -- Known abilities --------------------------------------------------------
--- known[ability] = highest rank known. Learned from the Beast Training
--- window (when open) and from your current pet's spellbook.
+-- known[ability] = highest rank known. Gathered from the Beast Training
+-- window, the pet's spellbook and the hunter's spellbook. Ranks come from
+-- "Rank N" text when the client shows it, otherwise by matching the spell's
+-- description numbers (e.g. "11 to 13") against each rank's data.
 local function Known() return PetAbilityMapCharDB.known end
 
-local function RankOf(sub)
-  return tonumber(sub and sub:match("(%d+)")) or 1
+-- "Bite (Rank 3)" / "Bite 3" / "Bite" -> "Bite", 3 | nil
+local function SplitName(name)
+  local base, r = name:match("^(.-)%s*%(Rank (%d+)%)$")
+  if not base then base, r = name:match("^(.-)%s+(%d+)$") end
+  if base and DATA.abilities[base] then return base, tonumber(r) end
+  return name
 end
 
-local function Learn(name, sub)
-  if not name or not DATA.icons[name] then return end
-  local r = RankOf(sub)
+local function SpellDescription(spellID)
+  if not spellID then return nil end
+  if C_Spell and C_Spell.GetSpellDescription then return C_Spell.GetSpellDescription(spellID) end
+  if GetSpellDescription then return GetSpellDescription(spellID) end
+end
+
+local function RankFromDescription(ability, desc)
+  if not desc or desc == "" then return nil end
+  local best
+  for _, rank in ipairs(DATA.abilities[ability].ranks) do
+    local key = rank[7]
+    if key and key ~= "" and desc:find(key, 1, true) then best = rank[1] end
+  end
+  return best
+end
+
+-- Returns ability, rank (or nil if not a pet ability).
+local function Identify(name, sub, spellID)
+  if not name then return nil end
+  local ability, rank = SplitName(name)
+  if not DATA.abilities[ability] then return nil end
+  rank = rank or tonumber(sub and sub:match("(%d+)"))
+    or RankFromDescription(ability, SpellDescription(spellID)) or 1
+  return ability, rank
+end
+ns.Identify = Identify
+
+local function Learn(name, sub, spellID)
+  local ability, rank = Identify(name, sub, spellID)
+  if not ability then return end
   local k = Known()
-  if (k[name] or 0) < r then k[name] = r end
+  if (k[ability] or 0) < rank then k[ability] = rank end
 end
 
+-- Classic-style Beast Training window (craft API)
 local function ScanBeastTraining()
   if not (GetNumCrafts and GetCraftInfo) then return end
   if GetCraftDisplaySkillLine and GetCraftDisplaySkillLine() ~= "Beast Training" then return end
@@ -32,26 +66,63 @@ local function ScanBeastTraining()
   end
 end
 
-local function PetSpellName(i)
-  if C_SpellBook and C_SpellBook.GetSpellBookItemName and Enum and Enum.SpellBookSpellBank then
-    return C_SpellBook.GetSpellBookItemName(i, Enum.SpellBookSpellBank.Pet)
-  elseif GetSpellBookItemName then
-    return GetSpellBookItemName(i, BOOKTYPE_PET or "pet")
-  elseif GetSpellName then
-    return GetSpellName(i, "pet")
+-- Modern trade-skill style window, in case Beast Training uses it
+local function ScanTradeSkill()
+  local T = C_TradeSkillUI
+  if not (T and T.GetAllRecipeIDs and T.GetRecipeInfo) then return end
+  for _, id in ipairs(T.GetAllRecipeIDs() or {}) do
+    local info = T.GetRecipeInfo(id)
+    if info and info.learned then Learn(info.name, info.subText, info.recipeID) end
   end
 end
 
+-- Spellbook item: name, subName, spellID
+local function BookItem(i, bank)
+  if C_SpellBook and C_SpellBook.GetSpellBookItemInfo and Enum and Enum.SpellBookSpellBank then
+    local info = C_SpellBook.GetSpellBookItemInfo(i, bank == "pet" and Enum.SpellBookSpellBank.Pet or Enum.SpellBookSpellBank.Player)
+    if info then return info.name, info.subName, info.spellID or info.actionID end
+  elseif GetSpellBookItemName then
+    local name, sub, id = GetSpellBookItemName(i, bank == "pet" and (BOOKTYPE_PET or "pet") or (BOOKTYPE_SPELL or "spell"))
+    return name, sub, id
+  end
+end
+ns.BookItem = BookItem
+
+local function NumPlayerBookItems()
+  if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
+    local n = 0
+    for i = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+      local info = C_SpellBook.GetSpellBookSkillLineInfo(i)
+      if info then n = math.max(n, (info.itemIndexOffset or 0) + (info.numSpellBookItems or 0)) end
+    end
+    return n
+  elseif GetNumSpellTabs then
+    local n = 0
+    for i = 1, GetNumSpellTabs() do
+      local _, _, offset, num = GetSpellTabInfo(i)
+      n = math.max(n, (offset or 0) + (num or 0))
+    end
+    return n
+  end
+  return 0
+end
+ns.NumPlayerBookItems = NumPlayerBookItems
+
 local function ScanPet()
   local n = HasPetSpells and HasPetSpells()
-  if not n then return end
-  for i = 1, n do Learn(PetSpellName(i)) end
+  for i = 1, (n or 0) do Learn(BookItem(i, "pet")) end
+end
+
+local function ScanPlayer()
+  for i = 1, NumPlayerBookItems() do Learn(BookItem(i, "player")) end
 end
 
 local function IsKnown(ability, rank) return (Known()[ability] or 0) >= rank end
 ns.IsKnown = IsKnown
 ns.KnownRank = function(ability) return Known()[ability] or 0 end
-ns.Scan = function() ScanPet(); ScanBeastTraining() end
+ns.Scan = function()
+  pcall(ScanPet); pcall(ScanPlayer); pcall(ScanBeastTraining); pcall(ScanTradeSkill)
+end
 
 -- Zone lookup --------------------------------------------------------------
 local function ZoneEntries(name)
@@ -165,18 +236,18 @@ ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("PLAYER_LOGIN")
 ev:RegisterEvent("PET_BAR_UPDATE")
 ev:RegisterEvent("UNIT_PET")
-pcall(ev.RegisterEvent, ev, "CRAFT_SHOW")
-pcall(ev.RegisterEvent, ev, "CRAFT_UPDATE")
+for _, e in ipairs({ "CRAFT_SHOW", "CRAFT_UPDATE", "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE",
+    "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB" }) do
+  pcall(ev.RegisterEvent, ev, e)
+end
 ev:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == "PetAbilityMap" then
     PetAbilityMapCharDB = PetAbilityMapCharDB or {}
     PetAbilityMapCharDB.known = PetAbilityMapCharDB.known or {}
   elseif event == "PLAYER_LOGIN" then
-    ScanPet(); CreateButton()
-  elseif event == "CRAFT_SHOW" or event == "CRAFT_UPDATE" then
-    ScanBeastTraining()
-  elseif event == "PET_BAR_UPDATE" or event == "UNIT_PET" then
-    ScanPet()
+    ns.Scan(); CreateButton()
+  elseif event ~= "ADDON_LOADED" then
+    ns.Scan()
   end
 end)
 
@@ -184,8 +255,10 @@ end)
 SLASH_PETABILITYMAP1 = "/petab"
 SlashCmdList.PETABILITYMAP = function(msg)
   msg = strtrim((msg or ""):lower())
-  if msg == "known" then
-    ScanPet(); ScanBeastTraining()
+  if msg == "debug" then
+    ns.Debug()
+  elseif msg == "known" then
+    ns.Scan()
     local any
     for a, r in pairs(Known()) do Msg(a .. " " .. r); any = true end
     if not any then Msg("nothing recorded yet. Open Beast Training or summon your pet.") end
