@@ -1,5 +1,6 @@
 -- PetAbilityMap: world map icon with a tooltip of pet abilities taught by
 -- tameable creatures in the zone being viewed. Data from wow-petopia.com.
+local _, ns = ...
 local DATA = PetAbilityMapData
 local ICON_PATH = "Interface\\Icons\\"
 local GREY = { 0.5, 0.5, 0.5 }
@@ -48,6 +49,9 @@ local function ScanPet()
 end
 
 local function IsKnown(ability, rank) return (Known()[ability] or 0) >= rank end
+ns.IsKnown = IsKnown
+ns.KnownRank = function(ability) return Known()[ability] or 0 end
+ns.Scan = function() ScanPet(); ScanBeastTraining() end
 
 -- Zone lookup --------------------------------------------------------------
 local function ZoneEntries(name)
@@ -175,6 +179,11 @@ SlashCmdList.PETABILITYMAP = function(msg)
     local any
     for a, r in pairs(Known()) do Msg(a .. " " .. r); any = true end
     if not any then Msg("nothing recorded yet. Open Beast Training or summon your pet.") end
+  elseif msg == "show" or msg == "list" then
+    ns.ToggleUI()
+  elseif msg == "minimap" then
+    PetAbilityMapCharDB.hideMinimap = not PetAbilityMapCharDB.hideMinimap
+    ns.UpdateMinimapButton()
   elseif msg == "reset" then
     wipe(Known()); Msg("known abilities cleared.")
   else
