@@ -8,7 +8,7 @@ local function Msg(t) print("|cff33ff99TargetMacro|r: " .. t) end
 -- blocks). Clearing first means a failed /targetexact leaves no target,
 -- so the skull never lands on the wrong unit.
 local function BuildBody(name)
-  return "/cleartarget\n/targetexact " .. name .. "\n/tm [exists] 8"
+  return "/cleartarget\n/targetexact " .. name .. "\n/tm [nogroup,exists] 8"
 end
 
 local function MakeMacro(unit, name)
