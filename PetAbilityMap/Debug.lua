@@ -14,9 +14,9 @@ local FRAMES = { "CraftFrame", "TradeSkillFrame", "ProfessionsFrame", "ClassTrai
 local function Report()
   P(("APIs: crafts=%s tradeskill=%s C_SpellBook=%s HasPetSpells=%s"):format(
     tostring(GetNumCrafts ~= nil), tostring(C_TradeSkillUI ~= nil),
-    tostring(C_SpellBook ~= nil), tostring(HasPetSpells ~= nil)))
+    tostring(C_SpellBook ~= nil), tostring(ns.NumPetSpells ~= nil)))
 
-  local n = HasPetSpells and HasPetSpells()
+  local n = ns.NumPetSpells()
   P("pet spells: " .. tostring(n))
   for i = 1, (n or 0) do
     local name, sub, id = ns.BookItem(i, "pet")
@@ -49,6 +49,15 @@ local function Report()
     for i = 1, math.min(#ids, 5) do
       local info = C_TradeSkillUI.GetRecipeInfo(ids[i])
       print(("  recipe %d: %s | learned=%s"):format(ids[i], tostring(info and info.name), tostring(info and info.learned)))
+    end
+  end
+
+  if GetNumTrainerServices then
+    local n = GetNumTrainerServices()
+    P("trainer entries: " .. tostring(n))
+    for i = 1, math.min(n or 0, 12) do
+      local name, sub, kind = GetTrainerServiceInfo(i)
+      print(("  trainer %d: %s | sub=%s | %s"):format(i, tostring(name), tostring(sub), tostring(kind)))
     end
   end
 

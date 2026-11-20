@@ -66,6 +66,39 @@ local function ScanBeastTraining()
   end
 end
 
+-- WoW Forever: Beast Training opens as a trainer window (TRAINER_SHOW).
+-- It lists only abilities the hunter has learned, so every entry counts,
+-- whatever its type (available / unavailable / used). Filters are opened
+-- up temporarily so nothing is hidden, then put back.
+local lastTrainerScan = 0
+local function ScanTrainer()
+  if not (GetNumTrainerServices and GetTrainerServiceInfo) then return end
+  -- changing filters fires TRAINER_UPDATE; don't let that re-trigger us
+  if GetTime() - lastTrainerScan < 1 then return end
+  lastTrainerScan = GetTime()
+  local saved = {}
+  if GetTrainerServiceTypeFilter and SetTrainerServiceTypeFilter then
+    for _, t in ipairs({ "available", "unavailable", "used" }) do
+      saved[t] = GetTrainerServiceTypeFilter(t)
+      if not saved[t] then SetTrainerServiceTypeFilter(t, 1) end
+    end
+  end
+  for i = 1, GetNumTrainerServices() do
+    local name, sub, kind = GetTrainerServiceInfo(i)
+    if name and kind ~= "header" then
+      local ability, rank = SplitName(name)
+      if DATA.abilities[ability] then
+        rank = rank or tonumber(sub and sub:match("(%d+)"))
+          or RankFromDescription(ability, GetTrainerServiceDescription and GetTrainerServiceDescription(i)) or 1
+        local k = PetAbilityMapCharDB.known
+        if (k[ability] or 0) < rank then k[ability] = rank end
+      end
+    end
+  end
+  for t, v in pairs(saved) do if not v then SetTrainerServiceTypeFilter(t, 0) end end
+end
+ns.ScanTrainer = ScanTrainer
+
 -- Modern trade-skill style window, in case Beast Training uses it
 local function ScanTradeSkill()
   local T = C_TradeSkillUI
@@ -108,8 +141,14 @@ local function NumPlayerBookItems()
 end
 ns.NumPlayerBookItems = NumPlayerBookItems
 
+local function NumPetSpells()
+  if C_SpellBook and C_SpellBook.HasPetSpells then return (C_SpellBook.HasPetSpells()) end
+  if HasPetSpells then return (HasPetSpells()) end
+end
+ns.NumPetSpells = NumPetSpells
+
 local function ScanPet()
-  local n = HasPetSpells and HasPetSpells()
+  local n = NumPetSpells()
   for i = 1, (n or 0) do Learn(BookItem(i, "pet")) end
 end
 
@@ -121,7 +160,7 @@ local function IsKnown(ability, rank) return (Known()[ability] or 0) >= rank end
 ns.IsKnown = IsKnown
 ns.KnownRank = function(ability) return Known()[ability] or 0 end
 ns.Scan = function()
-  pcall(ScanPet); pcall(ScanPlayer); pcall(ScanBeastTraining); pcall(ScanTradeSkill)
+  pcall(ScanPet); pcall(ScanPlayer); pcall(ScanBeastTraining); pcall(ScanTradeSkill); pcall(ScanTrainer)
 end
 
 -- Zone lookup --------------------------------------------------------------
@@ -237,7 +276,7 @@ ev:RegisterEvent("PLAYER_LOGIN")
 ev:RegisterEvent("PET_BAR_UPDATE")
 ev:RegisterEvent("UNIT_PET")
 for _, e in ipairs({ "CRAFT_SHOW", "CRAFT_UPDATE", "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE",
-    "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB" }) do
+    "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB", "TRAINER_SHOW", "TRAINER_UPDATE" }) do
   pcall(ev.RegisterEvent, ev, e)
 end
 ev:SetScript("OnEvent", function(_, event, arg1)
