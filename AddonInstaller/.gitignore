@@ -1,0 +1,6 @@
+backup-repo/
+addons-path.txt
+backup-remote.txt
+wtf-before-restore-*.tar.gz
+installed/
+*.zip
