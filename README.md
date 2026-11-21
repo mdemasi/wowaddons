@@ -10,4 +10,4 @@ Addons for WoW Forever (interface 16001). Copy a folder into `Interface/AddOns/`
 
 ## Installing on Linux
 
-`AddonInstaller/install-addons.sh` installs or updates addons from zip files, and `AddonInstaller/wow-backup.sh` backs up and restores addon data and settings to a private repo. See `AddonInstaller/README.md`.
+`AddonInstaller/install-addons.sh` installs or updates addons from zip files and backs up or restores addon data and settings to a private repo. See `AddonInstaller/README.md`.
