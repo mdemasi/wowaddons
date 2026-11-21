@@ -1,8 +1,15 @@
 # AddonInstaller
 
-One script, `install-addons.sh`, that installs or updates WoW addons from zip files and backs up your addon data and settings to a private GitHub repo. Made for Bazzite; works with Lutris, Steam/Proton, Bottles, Heroic and Faugus installs.
+Installs or updates WoW addons from zip files and backs up your addon data and settings to a private GitHub repo.
+
+- **Linux** (made for Bazzite; Lutris, Steam/Proton, Bottles, Heroic, Faugus): `install-addons.sh`
+- **Windows**: `install-addons.bat` (runs `install-addons.ps1`). Double-click it to install; double-click `backup-addons.bat` to back up. For other commands, open a terminal in the folder and run e.g. `install-addons.bat list`. Backups need [Git for Windows](https://git-scm.com/download/win), which signs you in to GitHub in your browser on the first push.
+
+Both versions use the same commands and the same backup repo, so you can back up on one machine and `pull` on another.
 
 ## Commands
+
+On Windows, use `install-addons.bat` in place of `./install-addons.sh` (and `-NoBackup` in place of `--no-backup`).
 
 | Command | What it does |
 |---|---|
@@ -10,6 +17,7 @@ One script, `install-addons.sh`, that installs or updates WoW addons from zip fi
 | `./install-addons.sh --no-backup` | Install without backing up first |
 | `./install-addons.sh backup` | Back up addon data and settings now (sets up backups on first run) |
 | `./install-addons.sh list` | Show recent backups |
+| `./install-addons.sh pull` | Download the latest backup and copy it into your WoW `WTF` folder (same as `restore`) |
 | `./install-addons.sh restore [id]` | Put the latest backup (or one from `list`) back |
 
 ## Installing addons

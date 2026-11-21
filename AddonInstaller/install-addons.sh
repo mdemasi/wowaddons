@@ -7,6 +7,7 @@
 #   ./install-addons.sh backup        back up addon data and settings, commit, push
 #   ./install-addons.sh list          show recent backups
 #   ./install-addons.sh restore [id]  put the latest backup (or a listed id) back into WTF
+#   ./install-addons.sh pull          download the latest backup and copy it into WTF (same as restore)
 #
 # Installing: each zip is unzipped, every addon folder inside replaces the one in
 # your AddOns folder, and the zip is moved to ./installed.
@@ -229,6 +230,7 @@ case "${1:-}" in
   backup)  do_backup ;;
   list)    do_list ;;
   restore) do_restore "${2:-}" ;;
+  pull)    do_restore ;;
   ""|--no-backup)
     if [[ "${1:-}" != "--no-backup" ]]; then
       if [[ -n "$BACKUP_REMOTE" ]]; then
@@ -241,5 +243,5 @@ case "${1:-}" in
       fi
     fi
     do_install ;;
-  *) echo "Usage: $0 [--no-backup] | backup | list | restore [id]"; exit 1 ;;
+  *) echo "Usage: $0 [--no-backup] | backup | list | pull | restore [id]"; exit 1 ;;
 esac
