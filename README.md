@@ -7,7 +7,7 @@ Addons for WoW Forever (interface 16001). Copy a folder into `Interface/AddOns/`
 - **BreathFrame**: screen border while your breath runs out underwater. `/breathframe test`
 - **TargetMacro**: right-click the target or focus frame and pick *Create Target Macro*, or use `/tmacro [focus|<name>]`, to get a macro on your cursor that targets that unit and puts a skull on it.
 - **PetAbilityMap**: world map icon listing the pet abilities you can learn by taming in the zone you're viewing, plus a minimap button that opens a list of every ability and its ranks, marked learned or not. Click the map icon to show creature locations as ability icons on the map. Data from wow-petopia.com; locations from [QuestieDB](https://github.com/Questie/QuestieDB) (GPLv3). `/petab`, `/petab show`, `/petab known`
-- **QuestZones**: floating window showing the % split of your unfinished quest objectives by continent, and zones ranked by how much of your quest log you can progress there. Recomputes on turn-in, accept, abandon and objective progress, or with the Recompute button. Locations from [QuestieDB](https://github.com/Questie/QuestieDB) (GPLv3). `/qz`
+- **QuestZones**: floating window showing the % split of your unfinished quest objectives by continent, zones ranked by how much of your quest log you can progress there (yellow and green quests weighted 1.5x), and the top 3 zones to pick up new quests at or slightly below your level. Recomputes on turn-in, accept, abandon and objective progress, or with the Recompute button. Locations from [QuestieDB](https://github.com/Questie/QuestieDB) (GPLv3). `/qz`
 
 ## Installing on Linux
 

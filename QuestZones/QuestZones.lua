@@ -1,8 +1,13 @@
 -- QuestZones: where are my unfinished quest objectives?
 --  * % split of objectives by continent
 --  * zones ranked by how much of your quest log you can progress there
+--  * top zones to pick up your next quests (available, at/slightly below your level)
 -- Turn-ins are ignored; quests ready to turn in are left out.
 local DATA = QuestZonesData
+local INFO = QuestZonesInfo
+local FAVOR = 1.5      -- weight multiplier for yellow and green quests
+local BELOW = 5        -- recommender: quests from (your level - BELOW) up to your level
+local TOP_PICKS = 3
 local WIDTH = 300
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
@@ -35,38 +40,105 @@ local function ContinentName(id)
   return continentOf[id]
 end
 
+-- Quest difficulty -----------------------------------------------------------
+local function GreenRange(level)
+  if UnitQuestTrivialLevelRange then return UnitQuestTrivialLevelRange("player") end
+  if GetQuestGreenRange then return GetQuestGreenRange() end
+  if level <= 5 then return 5 elseif level <= 39 then return math.floor(level / 10) + 5 end
+  return math.floor(level / 5) + 1
+end
+
+-- "red", "orange", "yellow", "green" or "grey" for a quest level
+local function Difficulty(qlevel)
+  local p = UnitLevel("player")
+  if not qlevel or qlevel <= 0 then qlevel = p end
+  local d = qlevel - p
+  if d >= 5 then return "red" elseif d >= 3 then return "orange" elseif d >= -2 then return "yellow"
+  elseif -d <= GreenRange(p) then return "green" end
+  return "grey"
+end
+local COLORS = { red = "ff2020", orange = "ff8040", yellow = "ffff00", green = "40c040", grey = "808080" }
+
 -- Quest log ------------------------------------------------------------------
 -- Returns list of { id, title, remaining } for quests not yet ready to turn in.
+local inLog = {}
 local function ActiveQuests()
   local list = {}
+  wipe(inLog)
   if C_QuestLog and C_QuestLog.GetNumQuestLogEntries then
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
       local info = C_QuestLog.GetInfo(i)
       if info and not info.isHeader and not info.isHidden and info.questID and info.questID > 0 then
         local id = info.questID
+        inLog[id] = true
         if not C_QuestLog.IsComplete(id) then
           local remaining = 0
           for _, o in ipairs(C_QuestLog.GetQuestObjectives(id) or {}) do
             if not o.finished then remaining = remaining + 1 end
           end
-          list[#list + 1] = { id = id, title = info.title, remaining = math.max(remaining, 1) }
+          list[#list + 1] = { id = id, title = info.title, level = info.level, remaining = math.max(remaining, 1) }
         end
       end
     end
   elseif GetNumQuestLogEntries then
     for i = 1, GetNumQuestLogEntries() do
-      local title, _, _, isHeader, _, isComplete, _, id = GetQuestLogTitle(i)
+      local title, qlevel, _, isHeader, _, isComplete, _, id = GetQuestLogTitle(i)
+      if id and not isHeader then inLog[id] = true end
       if not isHeader and id and isComplete ~= 1 then
         local remaining = 0
         for j = 1, (GetNumQuestLeaderBoards(i) or 0) do
           local _, _, done = GetQuestLogLeaderBoard(j, i)
           if not done then remaining = remaining + 1 end
         end
-        list[#list + 1] = { id = id, title = title, remaining = math.max(remaining, 1) }
+        list[#list + 1] = { id = id, title = title, level = qlevel, remaining = math.max(remaining, 1) }
       end
     end
   end
   return list
+end
+
+-- Recommender ------------------------------------------------------------------
+local function IsDone(id)
+  if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then return C_QuestLog.IsQuestFlaggedCompleted(id) end
+  return IsQuestFlaggedCompleted and IsQuestFlaggedCompleted(id)
+end
+local function HasBit(mask, n) return mask == 0 or math.floor(mask / 2 ^ n) % 2 == 1 end
+
+-- Quests you can pick up now at or slightly below your level, grouped by
+-- the zones where their objectives are.
+local function Recommend()
+  local p = UnitLevel("player")
+  local race = select(3, UnitRace("player")) or 0
+  local class = select(3, UnitClass("player")) or 0
+  local zones = {}
+  for id, q in pairs(INFO) do
+    local lvl = q[2] > 0 and q[2] or p
+    if lvl <= p and lvl >= p - BELOW and q[3] <= p and not inLog[id]
+        and HasBit(q[4], race - 1) and HasBit(q[5], class - 1) and not IsDone(id) then
+      local ok = true
+      if #q[7] > 0 then -- any one of these first
+        ok = false
+        for _, pre in ipairs(q[7]) do if IsDone(pre) then ok = true; break end end
+      end
+      for _, pre in ipairs(q[8]) do if not IsDone(pre) then ok = false; break end end
+      for _, ex in ipairs(q[9]) do if IsDone(ex) or inLog[ex] then ok = false; break end end
+      if ok then
+        local d = DATA[id]
+        for i = 1, #d, 2 do
+          local ui = d[i]
+          local z = zones[ui]
+          if not z then z = { id = ui, weight = 0, quests = {} }; zones[ui] = z end
+          z.weight = z.weight + d[i + 1] / 1000
+          z.quests[#z.quests + 1] = { title = q[1], level = lvl, start = q[6] }
+        end
+      end
+    end
+  end
+  local list = {}
+  for _, z in pairs(zones) do list[#list + 1] = z end
+  table.sort(list, function(a, b) return a.weight > b.weight end)
+  for i = #list, TOP_PICKS + 1, -1 do list[i] = nil end
+  return list, math.max(1, p - BELOW), p
 end
 
 -- Each unfinished objective is worth 1, split across the zones where the
@@ -80,11 +152,13 @@ local function Compute()
     if d then
       counted = counted + 1
       for i = 1, #d, 2 do
-        local ui, w = d[i], d[i + 1] / 1000 * q.remaining
+        local diff = Difficulty(q.level)
+        local favor = (diff == "yellow" or diff == "green") and FAVOR or 1
+        local ui, w = d[i], d[i + 1] / 1000 * q.remaining * favor
         local z = zones[ui]
         if not z then z = { id = ui, weight = 0, quests = {} }; zones[ui] = z end
         z.weight = z.weight + w
-        z.quests[#z.quests + 1] = { title = q.title, weight = w }
+        z.quests[#z.quests + 1] = { title = q.title, weight = w, diff = diff }
         local c = ContinentName(ui)
         continents[c] = (continents[c] or 0) + w
         total = total + w
@@ -98,7 +172,9 @@ local function Compute()
   table.sort(zl, function(a, b) return a.weight > b.weight end)
   for name, w in pairs(continents) do cl[#cl + 1] = { name = name, weight = w } end
   table.sort(cl, function(a, b) return a.weight > b.weight end)
-  result = { zones = zl, continents = cl, total = total, counted = counted, unknown = unknown, time = date("%H:%M") }
+  local picks, lo, hi = Recommend()
+  result = { zones = zl, continents = cl, total = total, counted = counted, unknown = unknown, time = date("%H:%M"),
+    picks = picks, lo = lo, hi = hi }
 end
 
 -- Window -------------------------------------------------------------------
@@ -180,7 +256,7 @@ local function Row()
     rows[used] = r
   end
   r:SetScript("OnEnter", nil)
-  r.bar:Hide(); r.right:SetText("")
+  r.bar:Hide(); r.right:SetText(""); r.bar:SetColorTexture(0.2, 0.5, 1, 0.35)
   r.left:SetFontObject("GameFontHighlightSmall")
   r:Show()
   return r
@@ -192,9 +268,23 @@ local function ZoneTooltip(self)
   GameTooltip:AddLine(MapName(z.id) .. "  (" .. ContinentName(z.id) .. ")")
   table.sort(z.quests, function(a, b) return a.weight > b.weight end)
   for _, q in ipairs(z.quests) do
-    GameTooltip:AddDoubleLine(q.title, ("%.1f"):format(q.weight), 1, 1, 1, 0.6, 0.8, 1)
+    GameTooltip:AddDoubleLine("|cff" .. COLORS[q.diff or "yellow"] .. q.title .. "|r", ("%.1f"):format(q.weight), 1, 1, 1, 0.6, 0.8, 1)
   end
-  GameTooltip:AddLine("Numbers are unfinished objectives you can work on here.", 0.6, 0.6, 0.6, true)
+  GameTooltip:AddLine("Numbers are unfinished objectives you can work on here (yellow and green quests count " .. FAVOR .. "x).", 0.6, 0.6, 0.6, true)
+  GameTooltip:Show()
+end
+
+local function PickTooltip(self)
+  local z = self.zone
+  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+  GameTooltip:AddLine("Quests to pick up for " .. MapName(z.id))
+  table.sort(z.quests, function(a, b) return a.level > b.level end)
+  for _, q in ipairs(z.quests) do
+    local start = (q.start and q.start > 0) and MapName(q.start) or "?"
+    GameTooltip:AddDoubleLine(("|cff%s[%d] %s|r"):format(COLORS[Difficulty(q.level)], q.level, q.title),
+      "from " .. start, 1, 1, 1, 0.7, 0.7, 0.7)
+  end
+  GameTooltip:AddLine("Not done, not in your log, prerequisites met.", 0.6, 0.6, 0.6, true)
   GameTooltip:Show()
 end
 
@@ -232,6 +322,22 @@ local function Render()
     bar(r, z.weight / top)
     r.zone = z
     r:SetScript("OnEnter", ZoneTooltip)
+    place(r)
+  end
+
+  y = y + 8
+  header(("Where to pick up quests next (level %d-%d)"):format(result.lo, result.hi))
+  if #result.picks == 0 then
+    local r = Row(); r.left:SetText("|cff808080Nothing found in that level range.|r"); place(r)
+  end
+  for i, z in ipairs(result.picks) do
+    local r = Row()
+    r.left:SetText(("%d. %s"):format(i, MapName(z.id)))
+    r.right:SetText(("%d quest%s"):format(#z.quests, #z.quests == 1 and "" or "s"))
+    bar(r, z.weight / result.picks[1].weight)
+    r.bar:SetColorTexture(0.25, 0.75, 0.25, 0.35)
+    r.zone = z
+    r:SetScript("OnEnter", PickTooltip)
     place(r)
   end
   content:SetHeight(y)
@@ -322,7 +428,7 @@ end
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("PLAYER_LOGIN")
-for _, e in ipairs({ "QUEST_TURNED_IN", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_LOG_UPDATE" }) do
+for _, e in ipairs({ "QUEST_TURNED_IN", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_LOG_UPDATE", "PLAYER_LEVEL_UP" }) do
   pcall(ev.RegisterEvent, ev, e)
 end
 ev:SetScript("OnEvent", function(_, event, arg1)
