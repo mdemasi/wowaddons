@@ -129,7 +129,11 @@ local function IsDone(id)
   if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then return C_QuestLog.IsQuestFlaggedCompleted(id) end
   return IsQuestFlaggedCompleted and IsQuestFlaggedCompleted(id)
 end
-local function HasBit(mask, n) return mask == 0 or math.floor(mask / 2 ^ n) % 2 == 1 end
+-- Race ID -> requiredRaces bit (WoW Forever's Skyborne races use bits 32/33).
+local RACE_MASK = { [1] = 1, [2] = 2, [3] = 4, [4] = 8, [5] = 16, [6] = 32, [7] = 64, [8] = 128,
+  [9] = 256, [10] = 512, [11] = 1024, [22] = 2097152, [24] = 8388608, [25] = 16777216,
+  [26] = 33554432, [95] = 4294967296, [96] = 8589934592 }
+local function HasFlag(mask, flag) return mask == 0 or not flag or math.floor(mask / flag) % 2 == 1 end
 
 -- Quests you can pick up now at or slightly below your level, grouped by
 -- the zones where their objectives are.
@@ -141,7 +145,7 @@ local function Recommend()
   for id, q in pairs(INFO) do
     local lvl = q[2] > 0 and q[2] or p
     if lvl <= p and lvl >= p - BELOW and q[3] <= p and not inLog[id]
-        and HasBit(q[4], race - 1) and HasBit(q[5], class - 1) and not IsDone(id) then
+        and HasFlag(q[4], RACE_MASK[race]) and HasFlag(q[5], class > 0 and 2 ^ (class - 1)) and not IsDone(id) then
       local ok = true
       if #q[7] > 0 then -- any one of these first
         ok = false
