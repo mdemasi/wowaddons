@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: QuestZones
+## Version: 1.0
+## Notes: Floating window showing where your quest objectives are by continent, and which zones are most worth your time.
+## SavedVariablesPerCharacter: QuestZonesDB
+QuestData.lua
+QuestZones.lua
