@@ -1,5 +1,7 @@
 ## Interface: 16001
 ## Title: TargetMacro
-## Version: 1.5
-## Notes: Right-click your target or focus frame, or type /tmacro, to make a macro that targets and skull-marks that unit.
+## Version: 2.0
+## Notes: Right-click your target or focus frame, or type /tmacro, to make a targeting macro. Minimap button opens the macro settings.
+## SavedVariables: TargetMacroDB
 TargetMacro.lua
+Config.lua

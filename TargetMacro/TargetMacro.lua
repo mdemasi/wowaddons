@@ -4,13 +4,36 @@ local MAX_NAME = 16 -- WoW macro name limit
 
 local function Msg(t) print("|cff33ff99TargetMacro|r: " .. t) end
 
--- Macro uses only built-in slash commands (no /run Lua, which WoW Forever
--- blocks). Clearing first means a failed /targetexact leaves no target,
--- so the skull never lands on the wrong unit.
-local function BuildBody(name)
-  -- /cleartarget [dead] drops the target if the match found is a corpse.
-  return "/cleartarget\n/targetexact " .. name .. "\n/cleartarget [dead]\n/tm [nogroup,exists] 8"
+-- Macro text is built from the options in the settings window (Config.lua).
+-- Only built-in slash commands are used (no /run Lua, which WoW Forever blocks).
+local _, ns = ...
+ns.DEFAULTS = {
+  keepEnemy = false, clearFirst = true, exact = true, skipDead = true, hostileOnly = false,
+  restoreLast = false, mark = true, marker = 8, markSoloOnly = true, setFocus = false,
+  petAttack = false, startAttack = false, autoShot = false,
+}
+function ns.Opt(key)
+  local v = TargetMacroDB and TargetMacroDB.options and TargetMacroDB.options[key]
+  if v == nil then return ns.DEFAULTS[key] end
+  return v
 end
+
+function ns.BuildBody(name)
+  local o, L = ns.Opt, {}
+  if o("keepEnemy") then L[#L + 1] = "/stopmacro [@target,harm,nodead]" end
+  if o("clearFirst") then L[#L + 1] = "/cleartarget" end
+  L[#L + 1] = (o("exact") and "/targetexact " or "/target ") .. name
+  if o("skipDead") then L[#L + 1] = "/cleartarget [dead]" end
+  if o("hostileOnly") then L[#L + 1] = "/cleartarget [noharm]" end
+  if o("restoreLast") then L[#L + 1] = "/targetlasttarget [noexists]" end
+  if o("mark") then L[#L + 1] = ("/tm %s %d"):format(o("markSoloOnly") and "[nogroup,exists]" or "[exists]", o("marker")) end
+  if o("setFocus") then L[#L + 1] = "/focus [exists]" end
+  if o("petAttack") then L[#L + 1] = "/petattack [@target,harm,nodead]" end
+  if o("startAttack") then L[#L + 1] = "/startattack [harm,nodead]" end
+  if o("autoShot") then L[#L + 1] = "/cast [harm,nodead] !Auto Shot" end
+  return table.concat(L, "\n")
+end
+local BuildBody = ns.BuildBody
 
 local function MakeMacro(unit, name)
   if InCombatLockdown() then Msg("can't create macros in combat."); return end
@@ -20,7 +43,10 @@ local function MakeMacro(unit, name)
     name = GetUnitName(unit, true) -- includes realm for other-realm players
   end
   local body = BuildBody(name)
-  if #body > 255 then Msg("name too long for a macro."); return end
+  if #body > 255 then
+    Msg(("macro would be %d characters (limit 255). Turn off some options in /tmacro config."):format(#body))
+    return
+  end
   local macroName = name:sub(1, MAX_NAME)
 
   local index = GetMacroIndexByName(macroName)
@@ -40,9 +66,35 @@ local function MakeMacro(unit, name)
   end
 
   if index and index > 0 then
+    TargetMacroDB.macros[macroName] = name
     PickupMacro(index)
     Msg("macro for " .. name .. " is on your cursor. Drop it on an action bar.")
   end
+end
+
+-- Rewrite every macro this addon made with the current options.
+function ns.UpdateAll()
+  if InCombatLockdown() then Msg("can't edit macros in combat."); return end
+  local n = 0
+  for macroName, name in pairs(TargetMacroDB.macros) do
+    local index = GetMacroIndexByName(macroName)
+    if index and index > 0 then
+      local body = BuildBody(name)
+      if #body <= 255 then EditMacro(index, macroName, ICON, body); n = n + 1 end
+    else
+      TargetMacroDB.macros[macroName] = nil -- deleted by the player
+    end
+  end
+  Msg("updated " .. n .. " macro" .. (n == 1 and "" or "s") .. ".")
+end
+
+function ns.CountMacros()
+  local n = 0
+  for macroName in pairs(TargetMacroDB.macros) do
+    local index = GetMacroIndexByName(macroName)
+    if index and index > 0 then n = n + 1 end
+  end
+  return n
 end
 
 -- Work out which unit a menu belongs to: the menu's own data first,
@@ -103,6 +155,8 @@ end
 -- /tmacro            -> current target
 -- /tmacro focus      -> current focus
 -- /tmacro <name>     -> macro for that name (doesn't need to be targeted)
+-- /tmacro config     -> settings window
+-- /tmacro update     -> rewrite all macros made by this addon with current settings
 SLASH_TARGETMACRO1 = "/tmacro"
 SlashCmdList.TARGETMACRO = function(msg)
   msg = strtrim(msg or "")
@@ -114,7 +168,21 @@ SlashCmdList.TARGETMACRO = function(msg)
       Msg(("Menu.ModifyMenu=%s UnitPopup_ShowMenu=%s UnitPopup_OpenMenu=%s"):format(
         tostring(Menu and Menu.ModifyMenu ~= nil), tostring(UnitPopup_ShowMenu ~= nil), tostring(UnitPopup_OpenMenu ~= nil)))
     end
+  elseif lower == "config" or lower == "options" or lower == "settings" then ns.ToggleConfig()
+  elseif lower == "update" then ns.UpdateAll()
+  elseif lower == "minimap" then
+    TargetMacroDB.hideMinimap = not TargetMacroDB.hideMinimap
+    ns.UpdateMinimapButton()
   elseif lower == "" or lower == "target" then MakeMacro("target")
   elseif lower == "focus" then MakeMacro("focus")
   else MakeMacro(nil, msg) end
 end
+
+local ev = CreateFrame("Frame")
+ev:RegisterEvent("ADDON_LOADED")
+ev:SetScript("OnEvent", function(_, _, name)
+  if name ~= "TargetMacro" then return end
+  TargetMacroDB = TargetMacroDB or {}
+  TargetMacroDB.options = TargetMacroDB.options or {}
+  TargetMacroDB.macros = TargetMacroDB.macros or {}
+end)
