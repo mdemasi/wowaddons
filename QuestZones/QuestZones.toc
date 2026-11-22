@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: QuestZones
-## Version: 1.2
+## Version: 1.3
 ## Notes: Where your quest objectives are by continent, which zones are most worth your time, and where to pick up your next quests.
 ## SavedVariablesPerCharacter: QuestZonesDB
 QuestData.lua
