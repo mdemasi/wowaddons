@@ -7,7 +7,8 @@ local DATA = QuestZonesData
 local INFO = QuestZonesInfo
 local FAVOR = 1.5      -- weight multiplier for yellow and green quests
 local BELOW = 5        -- recommender: quests from (your level - BELOW) up to your level
-local TOP_PICKS = 3
+local TOP_PICKS = 6
+local DUNGEON = (Enum and Enum.UIMapType and Enum.UIMapType.Dungeon) or 4
 local WIDTH = 300
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
@@ -38,6 +39,32 @@ local function ContinentName(id)
     continentOf[id] = name
   end
   return continentOf[id]
+end
+
+local isInstance = {}
+local function IsInstance(id)
+  if isInstance[id] == nil then
+    local info = C_Map and C_Map.GetMapInfo(id)
+    isInstance[id] = info and info.mapType == DUNGEON or false
+  end
+  return isInstance[id]
+end
+
+-- A quest's zones as { uiMapID, share, ... } honoring the dungeon/raid toggle:
+-- when off, quests done mostly inside instances are dropped and instance
+-- zones are removed from the rest.
+local function QuestZoneList(id)
+  local d = DATA[id]
+  if not d or QuestZonesDB.includeInstances then return d end
+  local inside = 0
+  for i = 1, #d, 2 do if IsInstance(d[i]) then inside = inside + d[i + 1] end end
+  if inside == 0 then return d end
+  if inside >= 500 then return nil, true end
+  local out = {}
+  for i = 1, #d, 2 do
+    if not IsInstance(d[i]) then out[#out + 1] = d[i]; out[#out + 1] = d[i + 1] end
+  end
+  return out
 end
 
 -- Quest difficulty -----------------------------------------------------------
@@ -122,20 +149,35 @@ local function Recommend()
       end
       for _, pre in ipairs(q[8]) do if not IsDone(pre) then ok = false; break end end
       for _, ex in ipairs(q[9]) do if IsDone(ex) or inLog[ex] then ok = false; break end end
-      if ok then
-        local d = DATA[id]
+      local d = ok and QuestZoneList(id)
+      if d then
+        -- quests from the same chain count once per zone (largest share wins)
+        local chain = q[10] or id
         for i = 1, #d, 2 do
           local ui = d[i]
           local z = zones[ui]
-          if not z then z = { id = ui, weight = 0, quests = {} }; zones[ui] = z end
-          z.weight = z.weight + d[i + 1] / 1000
-          z.quests[#z.quests + 1] = { title = q[1], level = lvl, start = q[6] }
+          if not z then z = { id = ui, chains = {} }; zones[ui] = z end
+          local c = z.chains[chain]
+          if not c then c = { share = 0, quests = {} }; z.chains[chain] = c end
+          c.share = math.max(c.share, d[i + 1] / 1000)
+          c.quests[#c.quests + 1] = { title = q[1], level = lvl, start = q[6] }
         end
       end
     end
   end
   local list = {}
-  for _, z in pairs(zones) do list[#list + 1] = z end
+  for _, z in pairs(zones) do
+    z.weight, z.quests = 0, {}
+    for _, c in pairs(z.chains) do
+      z.weight = z.weight + c.share
+      table.sort(c.quests, function(a, b) return a.level < b.level end)
+      local first = c.quests[1]
+      local title = first.title
+      if #c.quests > 1 then title = title .. " |cff808080(+" .. (#c.quests - 1) .. " in chain)|r" end
+      z.quests[#z.quests + 1] = { title = title, level = first.level, start = first.start }
+    end
+    list[#list + 1] = z
+  end
   table.sort(list, function(a, b) return a.weight > b.weight end)
   for i = #list, TOP_PICKS + 1, -1 do list[i] = nil end
   return list, math.max(1, p - BELOW), p
@@ -147,8 +189,10 @@ local result
 local function Compute()
   local zones, continents, total = {}, {}, 0
   local unknown, counted = {}, 0
+  local skipped = 0
   for _, q in ipairs(ActiveQuests()) do
-    local d = DATA[q.id]
+    local d, instanceOnly = QuestZoneList(q.id)
+    if instanceOnly then skipped = skipped + 1 end
     if d then
       counted = counted + 1
       for i = 1, #d, 2 do
@@ -163,7 +207,7 @@ local function Compute()
         continents[c] = (continents[c] or 0) + w
         total = total + w
       end
-    else
+    elseif not instanceOnly then
       unknown[#unknown + 1] = q.title
     end
   end
@@ -174,7 +218,7 @@ local function Compute()
   table.sort(cl, function(a, b) return a.weight > b.weight end)
   local picks, lo, hi = Recommend()
   result = { zones = zl, continents = cl, total = total, counted = counted, unknown = unknown, time = date("%H:%M"),
-    picks = picks, lo = lo, hi = hi }
+    picks = picks, lo = lo, hi = hi, skipped = skipped }
 end
 
 -- Window -------------------------------------------------------------------
@@ -216,8 +260,15 @@ footer:SetPoint("LEFT", recompute, "RIGHT", 8, 0)
 footer:SetPoint("RIGHT", win, "RIGHT", -28, 0)
 footer:SetJustifyH("LEFT")
 
+local instToggle = CreateFrame("CheckButton", nil, win, "UICheckButtonTemplate")
+instToggle:SetSize(22, 22)
+instToggle:SetPoint("TOPLEFT", 12, -28)
+local instLabel = instToggle:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+instLabel:SetPoint("LEFT", instToggle, "RIGHT", 2, 0)
+instLabel:SetText("Count dungeon & raid quests")
+
 local scroll = CreateFrame("ScrollFrame", nil, win, "UIPanelScrollFrameTemplate")
-scroll:SetPoint("TOPLEFT", 12, -32)
+scroll:SetPoint("TOPLEFT", 12, -54)
 scroll:SetPoint("BOTTOMRIGHT", -32, 38)
 local content = CreateFrame("Frame", nil, scroll)
 content:SetSize(WIDTH, 1)
@@ -284,7 +335,7 @@ local function PickTooltip(self)
     GameTooltip:AddDoubleLine(("|cff%s[%d] %s|r"):format(COLORS[Difficulty(q.level)], q.level, q.title),
       "from " .. start, 1, 1, 1, 0.7, 0.7, 0.7)
   end
-  GameTooltip:AddLine("Not done, not in your log, prerequisites met.", 0.6, 0.6, 0.6, true)
+  GameTooltip:AddLine("Not done, not in your log, prerequisites met. Each quest chain counts once.", 0.6, 0.6, 0.6, true)
   GameTooltip:Show()
 end
 
@@ -333,7 +384,7 @@ local function Render()
   for i, z in ipairs(result.picks) do
     local r = Row()
     r.left:SetText(("%d. %s"):format(i, MapName(z.id)))
-    r.right:SetText(("%d quest%s"):format(#z.quests, #z.quests == 1 and "" or "s"))
+    r.right:SetText(#z.quests == 1 and "1 quest" or (#z.quests .. " quests"))
     bar(r, z.weight / result.picks[1].weight)
     r.bar:SetColorTexture(0.25, 0.75, 0.25, 0.35)
     r.zone = z
@@ -341,15 +392,23 @@ local function Render()
     place(r)
   end
   content:SetHeight(y)
+  local notes = {}
+  if #result.unknown > 0 then notes[#notes + 1] = #result.unknown .. " without location data" end
+  if result.skipped > 0 then notes[#notes + 1] = result.skipped .. " dungeon/raid hidden" end
   footer:SetText(("%d quests counted, updated %s%s"):format(result.counted, result.time,
-    #result.unknown > 0 and (" |cff808080(" .. #result.unknown .. " without location data)|r") or ""))
+    #notes > 0 and (" |cff808080(" .. table.concat(notes, ", ") .. ")|r") or ""))
 end
 
 local function Recompute() Compute(); if win:IsShown() then Render() end end
 recompute:SetScript("OnClick", Recompute)
+instToggle:SetScript("OnClick", function(self)
+  QuestZonesDB.includeInstances = self:GetChecked() and true or false
+  Recompute()
+end)
 win:SetScript("OnShow", function()
   local s = QuestZonesDB.size
   if s then win:SetSize(s[1], s[2]) end
+  instToggle:SetChecked(QuestZonesDB.includeInstances and true or false)
   Recompute()
 end)
 footer:SetScript("OnEnter", nil)
